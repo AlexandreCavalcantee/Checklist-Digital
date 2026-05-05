@@ -391,9 +391,12 @@ export function DashboardShell() {
               ) : null}
             </div>
 
-            <button className="relative z-10 bg-black text-white hover:bg-[#111] px-8 py-3 rounded-lg font-bold shadow-xl transition-transform active:scale-95 uppercase text-sm tracking-widest border border-black/20">
+            <Link
+              href="/checklists/new"
+              className="relative z-10 bg-black text-white hover:bg-[#111] px-8 py-3 rounded-lg font-bold shadow-xl transition-transform active:scale-95 uppercase text-sm tracking-widest border border-black/20"
+            >
               Criar checklist com IA
-            </button>
+            </Link>
 
             <div className="absolute right-0 top-0 h-full w-1/3 opacity-20 pointer-events-none">
               <svg className="h-full w-full" fill="black" preserveAspectRatio="none" viewBox="0 0 100 100">
