@@ -2,13 +2,19 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET() {
-  const { data: tarefas, error } = await supabaseAdmin
-    .from("tarefas")
-    .select("status");
+  let tarefas: Array<{ status: string }> = [];
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("tarefas")
+      .select("status");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    tarefas = data ?? [];
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 
-  const counts = (tarefas || []).reduce<Record<string, number>>((acc, t) => {
+  const counts = tarefas.reduce<Record<string, number>>((acc, t) => {
     acc[t.status] = (acc[t.status] || 0) + 1;
     return acc;
   }, {});
