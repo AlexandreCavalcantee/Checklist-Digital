@@ -13,4 +13,3 @@ export async function POST(
     updatedAt: result.checklist.updatedAt,
   });
 }
-

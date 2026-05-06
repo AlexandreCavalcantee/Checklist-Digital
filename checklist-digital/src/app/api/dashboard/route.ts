@@ -1,27 +1,31 @@
 import { NextResponse } from "next/server";
-import { getStore } from "@/server/store";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET() {
-  const { checklists, actionPlans } = getStore();
+  const { data: tarefas, error } = await supabaseAdmin
+    .from("tarefas")
+    .select("status");
 
-  const checklistCounts = {
-    in_progress: checklists.filter((c) => c.status === "in_progress").length,
-    reopened: checklists.filter((c) => c.status === "reopened").length,
-    under_analysis: checklists.filter((c) => c.status === "under_analysis").length,
-    rejected: checklists.filter((c) => c.status === "rejected").length,
-  };
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const actionPlanCounts = {
-    delayed: actionPlans.filter((a) => a.status === "delayed").length,
-    awaiting_solution: actionPlans.filter((a) => a.status === "awaiting_solution").length,
-    solution_under_analysis: actionPlans.filter((a) => a.status === "solution_under_analysis").length,
-    awaiting_conclusion: actionPlans.filter((a) => a.status === "awaiting_conclusion").length,
-  };
+  const counts = (tarefas || []).reduce<Record<string, number>>((acc, t) => {
+    acc[t.status] = (acc[t.status] || 0) + 1;
+    return acc;
+  }, {});
 
   return NextResponse.json({
-    checklistCounts,
-    actionPlanCounts,
+    checklistCounts: {
+      in_progress: (counts["in_progress"] || 0) + (counts["pendente"] || 0),
+      reopened: counts["reopened"] || 0,
+      under_analysis: counts["under_analysis"] || 0,
+      rejected: counts["rejected"] || 0,
+    },
+    actionPlanCounts: {
+      delayed: 0,
+      awaiting_solution: 0,
+      solution_under_analysis: 0,
+      awaiting_conclusion: 0,
+    },
     lastUpdatedAt: new Date().toISOString(),
   });
 }
-
