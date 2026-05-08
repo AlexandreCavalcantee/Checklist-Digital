@@ -33,6 +33,7 @@ export async function POST(req: Request) {
 
   const title = body?.title?.trim() || "Novo Checklist (Modelo)";
   const description = body?.description?.trim();
+  const responsavelId = (body as { responsavelId?: string } | null)?.responsavelId || null;
 
   try {
     const { data: tarefa, error } = await supabaseAdmin
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
         prioridade: "media",
         status: "pendente",
         tenant_id: TENANT_ID,
+        responsavel_id: responsavelId,
       })
       .select()
       .single();

@@ -300,20 +300,20 @@ export function DashboardShell() {
             <IconGrid className="w-5 h-5" />
             <span className="font-medium">Dashboard</span>
           </a>
-          <a
+          <Link
             className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all"
-            href="#"
+            href="/checklists/applied"
           >
             <IconChecklist className="w-5 h-5" />
             <span>Checklists Aplicados</span>
-          </a>
-          <a
+          </Link>
+          <Link
             className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all"
-            href="#"
+            href="/planos"
           >
             <IconClock className="w-5 h-5" />
             <span>Planos de Ação</span>
-          </a>
+          </Link>
           <a
             className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all"
             href="#"
