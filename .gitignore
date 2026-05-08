@@ -1,0 +1,41 @@
+# Variáveis de ambiente — NUNCA commitar
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+checklist-digital/.env
+checklist-digital/.env.local
+checklist-digital/.env.*.local
+
+# Dependências
+node_modules/
+checklist-digital/node_modules/
+
+# Build
+checklist-digital/.next/
+checklist-digital/out/
+checklist-digital/build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Chaves e certificados
+*.pem
+*.key
+*.p12

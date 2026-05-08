@@ -396,8 +396,8 @@ function CalendarPopover(props: {
 
       <div className="p-3">
         <div className="grid grid-cols-7 gap-1 text-[10px] font-black tracking-widest uppercase text-white/35 mb-2">
-          {["D", "S", "T", "Q", "Q", "S", "S"].map((d) => (
-            <div key={d} className="text-center">
+          {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
+            <div key={i} className="text-center">
               {d}
             </div>
           ))}
@@ -502,66 +502,100 @@ function PopoverShell(props: {
   );
 }
 
+type UserOption = { id: string; nome: string; email: string };
+
 function AssigneePopover(props: {
   open: boolean;
   anchorRef: React.RefObject<HTMLButtonElement | null>;
-  value: string;
-  onChange: (v: string) => void;
+  value: UserOption | null;
+  onChange: (v: UserOption | null) => void;
   onClose: () => void;
 }) {
   const { open, anchorRef, value, onChange, onClose } = props;
   const [query, setQuery] = useState("");
-  const options = useMemo(() => {
-    const base = ["Não delegado", "Eu"];
-    if (!query.trim()) return base;
+  const [users, setUsers] = useState<UserOption[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/profiles")
+      .then((r) => r.json())
+      .then((j: { items: UserOption[] }) => setUsers(j.items || []))
+      .catch(() => {});
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return users;
     const q = query.trim().toLowerCase();
-    return base.filter((x) => x.toLowerCase().includes(q));
-  }, [query]);
+    return users.filter((u) => u.nome.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+  }, [query, users]);
+
+  function initials(nome: string) {
+    return nome.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
+  }
 
   return (
     <PopoverShell open={open} anchorRef={anchorRef} onClose={onClose}>
       <div className="p-3 border-b border-white/10">
-        <div className="text-xs font-black tracking-widest uppercase text-white/40">
-          Responsável
-        </div>
+        <div className="text-xs font-black tracking-widest uppercase text-white/40 mb-2">Responsável</div>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Digite um responsável"
-          className="mt-2 w-full rounded-lg bg-white/5 border border-white/10 focus:border-[#eab308]/60 focus:ring-2 focus:ring-[#eab308]/20 outline-none px-3 py-2 text-sm text-white/80"
+          placeholder="Buscar usuário..."
+          className="w-full rounded-lg bg-white/5 border border-white/10 focus:border-[#eab308]/60 focus:ring-2 focus:ring-[#eab308]/20 outline-none px-3 py-2 text-sm text-white/80"
         />
       </div>
-      <div className="p-2">
-        {options.map((opt) => {
-          const selected = opt === value;
+      <div className="p-2 max-h-48 overflow-y-auto">
+        {/* Sem responsável */}
+        <button
+          type="button"
+          onClick={() => { onChange(null); onClose(); }}
+          className={cx(
+            "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm mb-1",
+            value === null ? "bg-[#eab308]/15 text-[#eab308]" : "text-white/50 hover:bg-white/5 hover:text-white"
+          )}
+        >
+          <div className="w-7 h-7 rounded-full bg-white/5 border border-dashed border-white/20 flex items-center justify-center shrink-0">
+            <svg className="w-3.5 h-3.5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+            </svg>
+          </div>
+          <span>Não delegado</span>
+          {value === null && <span className="ml-auto text-[#eab308] font-black">✓</span>}
+        </button>
+
+        {filtered.length === 0 && users.length === 0 && (
+          <p className="text-center text-white/30 text-xs py-4">Nenhum usuário cadastrado</p>
+        )}
+        {filtered.length === 0 && users.length > 0 && (
+          <p className="text-center text-white/30 text-xs py-4">Nenhum resultado</p>
+        )}
+
+        {filtered.map((u) => {
+          const selected = value?.id === u.id;
           return (
             <button
-              key={opt}
+              key={u.id}
               type="button"
-              onClick={() => {
-                onChange(opt);
-                onClose();
-              }}
+              onClick={() => { onChange(u); onClose(); }}
               className={cx(
-                "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm",
+                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm",
                 selected ? "bg-[#eab308]/15 text-[#eab308]" : "text-white/70 hover:bg-white/5 hover:text-white"
               )}
             >
-              <span>{opt}</span>
-              {selected ? <span className="text-[#eab308] font-black">✓</span> : null}
+              <div className={cx(
+                "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0",
+                selected ? "bg-[#eab308] text-black" : "bg-[#ca8a04]/20 border border-[#ca8a04]/30 text-[#eab308]"
+              )}>
+                {initials(u.nome)}
+              </div>
+              <div className="text-left min-w-0">
+                <p className="text-sm font-semibold truncate">{u.nome}</p>
+                {u.email && <p className="text-xs text-white/40 truncate">{u.email}</p>}
+              </div>
+              {selected && <span className="ml-auto text-[#eab308] font-black shrink-0">✓</span>}
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={() => {
-            onChange("Convidar para o projeto");
-            onClose();
-          }}
-          className="w-full mt-1 px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/5 hover:text-white text-left"
-        >
-          Convidar para projeto
-        </button>
       </div>
     </PopoverShell>
   );
@@ -618,10 +652,11 @@ export default function NewChecklistPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [notify, setNotify] = useState(true);
-  const [dueDate, setDueDate] = useState<Date | null>(null);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState<"start" | "end" | null>(null);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
-  const [assignee, setAssignee] = useState<string>("Não delegado");
+  const [assignee, setAssignee] = useState<UserOption | null>(null);
   const assigneeBtnRef = useRef<HTMLButtonElement | null>(null);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [priority, setPriority] = useState<1 | 2 | 3 | 4>(4);
@@ -632,15 +667,19 @@ export default function NewChecklistPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
-  const dateBtnRef = useRef<HTMLButtonElement | null>(null);
+  const startDateBtnRef = useRef<HTMLButtonElement | null>(null);
+  const endDateBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const draft = useMemo(() => {
     return title.trim().length > 0 || description.trim().length > 0;
   }, [title, description]);
 
   async function createChecklist() {
-    setSaving(true);
     setError(null);
+    if (!startDate) { setError("Informe a data inicial do checklist."); return; }
+    if (!endDate) { setError("Informe a data final do checklist."); return; }
+    if (endDate <= startDate) { setError("A data final deve ser posterior à data inicial."); return; }
+    setSaving(true);
     setSavedId(null);
     try {
       const res = await fetch("/api/checklists", {
@@ -650,6 +689,9 @@ export default function NewChecklistPage() {
           title: title.trim() || "Novo Checklist",
           description: description.trim() || undefined,
           notifyTeam: notify,
+          responsavelId: assignee?.id ?? null,
+          startDate: startDate?.toISOString() ?? null,
+          endDate: endDate?.toISOString() ?? null,
         }),
       });
       const json = (await res.json().catch(() => null)) as { checklist?: { id: string } } | { error?: string } | null;
@@ -815,85 +857,148 @@ export default function NewChecklistPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-10">
-                  {[
-                    { icon: <IconCalendar className="w-5 h-5" />, k: "DATA", v: dueDate ? formatDatePtBR(dueDate) : "Definir prazo", isDate: true },
-                    { icon: <IconPerson className="w-5 h-5" />, k: "RESP.", v: assignee, isAssignee: true },
-                    { icon: <IconFlag className="w-5 h-5" />, k: "PRIOR.", v: `Prioridade ${priority}`, isPriority: true },
-                    { icon: <IconPaperclip className="w-5 h-5" />, k: "ANEXO", v: uploading ? "Enviando..." : "Adicionar", isAttach: true },
-                    { icon: <IconAlarm className="w-5 h-5" />, k: "LEMBRETE", v: "Configurar" },
-                  ].map((b) => (
-                    <div key={b.k} className="relative">
-                      <button
-                        ref={
-                          b.isDate
-                            ? dateBtnRef
-                            : b.isAssignee
-                              ? assigneeBtnRef
-                              : b.isPriority
-                                ? priorityBtnRef
-                                : undefined
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-10">
+                  {/* Data Inicial */}
+                  <div className="relative">
+                    <button
+                      ref={startDateBtnRef}
+                      type="button"
+                      onClick={() => setCalendarOpen((v) => v === "start" ? null : "start")}
+                      className={cx(
+                        "w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border rounded transition-colors group text-left hover:border-white/30",
+                        calendarOpen === "start" ? "border-[#eab308]/60" : "border-white/10"
+                      )}
+                    >
+                      <span className="text-white/40 group-hover:text-[#eab308]"><IconCalendar className="w-5 h-5" /></span>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] font-bold text-white/40 leading-none mb-1">DATA INICIAL</p>
+                        <p className="text-xs font-semibold text-white/80 truncate">{startDate ? formatDatePtBR(startDate) : "Definir início"}</p>
+                      </div>
+                    </button>
+                    <CalendarPopover
+                      open={calendarOpen === "start"}
+                      anchorRef={startDateBtnRef}
+                      value={startDate}
+                      onChange={(d) => { setStartDate(startOfDay(d)); setCalendarOpen(null); }}
+                      onClose={() => setCalendarOpen(null)}
+                    />
+                  </div>
+
+                  {/* Data Final */}
+                  <div className="relative">
+                    <button
+                      ref={endDateBtnRef}
+                      type="button"
+                      onClick={() => setCalendarOpen((v) => v === "end" ? null : "end")}
+                      className={cx(
+                        "w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border rounded transition-colors group text-left hover:border-white/30",
+                        calendarOpen === "end" ? "border-[#eab308]/60" : "border-white/10"
+                      )}
+                    >
+                      <span className="text-white/40 group-hover:text-[#eab308]"><IconCalendar className="w-5 h-5" /></span>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] font-bold text-white/40 leading-none mb-1">DATA FINAL</p>
+                        <p className="text-xs font-semibold text-white/80 truncate">{endDate ? formatDatePtBR(endDate) : "Definir prazo"}</p>
+                      </div>
+                    </button>
+                    <CalendarPopover
+                      open={calendarOpen === "end"}
+                      anchorRef={endDateBtnRef}
+                      value={endDate}
+                      onChange={(d) => {
+                        const selected = startOfDay(d);
+                        if (startDate && selected <= startDate) {
+                          setError("A data final deve ser posterior à data inicial.");
+                          return;
                         }
-                        className={cx(
-                          "w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border rounded transition-colors group text-left",
-                          (b.isDate && calendarOpen) ||
-                            (b.isAssignee && assigneeOpen) ||
-                            (b.isPriority && priorityOpen)
-                            ? "border-[#eab308]/60"
-                            : "border-white/10",
-                          "hover:border-white/30"
-                        )}
-                        type="button"
-                        onClick={() => {
-                          if (b.isDate) setCalendarOpen((v) => !v);
-                          if (b.isAssignee) setAssigneeOpen((v) => !v);
-                          if (b.isPriority) setPriorityOpen((v) => !v);
-                          if (b.isAttach) fileInputRef.current?.click();
-                        }}
-                      >
-                        <span className={cx("text-white/40 group-hover:text-[#eab308]", b.isPriority && "text-[#eab308]")}>
-                          {b.icon}
-                        </span>
-                        <div className="text-left min-w-0">
-                          <p className="text-[10px] font-bold text-white/40 leading-none mb-1">{b.k}</p>
-                          <p className="text-xs font-semibold text-white/80 truncate">{b.v}</p>
-                        </div>
-                      </button>
+                        setError(null);
+                        setEndDate(selected);
+                        setCalendarOpen(null);
+                      }}
+                      onClose={() => setCalendarOpen(null)}
+                    />
+                  </div>
 
-                      {b.isDate ? (
-                        <CalendarPopover
-                          open={calendarOpen}
-                          anchorRef={dateBtnRef}
-                          value={dueDate}
-                          onChange={(d) => {
-                            setDueDate(startOfDay(d));
-                            setCalendarOpen(false);
-                          }}
-                          onClose={() => setCalendarOpen(false)}
-                        />
-                      ) : null}
+                  {/* Responsável */}
+                  <div className="relative">
+                    <button
+                      ref={assigneeBtnRef}
+                      type="button"
+                      onClick={() => setAssigneeOpen((v) => !v)}
+                      className={cx(
+                        "w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border rounded transition-colors group text-left hover:border-white/30",
+                        assigneeOpen ? "border-[#eab308]/60" : "border-white/10"
+                      )}
+                    >
+                      <span className="text-white/40 group-hover:text-[#eab308]"><IconPerson className="w-5 h-5" /></span>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] font-bold text-white/40 leading-none mb-1">RESP.</p>
+                        <p className="text-xs font-semibold text-white/80 truncate">{assignee ? assignee.nome : "Não delegado"}</p>
+                      </div>
+                    </button>
+                    <AssigneePopover
+                      open={assigneeOpen}
+                      anchorRef={assigneeBtnRef}
+                      value={assignee}
+                      onChange={setAssignee}
+                      onClose={() => setAssigneeOpen(false)}
+                    />
+                  </div>
 
-                      {b.isAssignee ? (
-                        <AssigneePopover
-                          open={assigneeOpen}
-                          anchorRef={assigneeBtnRef}
-                          value={assignee}
-                          onChange={setAssignee}
-                          onClose={() => setAssigneeOpen(false)}
-                        />
-                      ) : null}
+                  {/* Prioridade */}
+                  <div className="relative">
+                    <button
+                      ref={priorityBtnRef}
+                      type="button"
+                      onClick={() => setPriorityOpen((v) => !v)}
+                      className={cx(
+                        "w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border rounded transition-colors group text-left hover:border-white/30",
+                        priorityOpen ? "border-[#eab308]/60" : "border-white/10"
+                      )}
+                    >
+                      <span className="text-[#eab308]"><IconFlag className="w-5 h-5" /></span>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] font-bold text-white/40 leading-none mb-1">PRIOR.</p>
+                        <p className="text-xs font-semibold text-white/80 truncate">Prioridade {priority}</p>
+                      </div>
+                    </button>
+                    <PriorityPopover
+                      open={priorityOpen}
+                      anchorRef={priorityBtnRef}
+                      value={priority}
+                      onChange={setPriority}
+                      onClose={() => setPriorityOpen(false)}
+                    />
+                  </div>
 
-                      {b.isPriority ? (
-                        <PriorityPopover
-                          open={priorityOpen}
-                          anchorRef={priorityBtnRef}
-                          value={priority}
-                          onChange={setPriority}
-                          onClose={() => setPriorityOpen(false)}
-                        />
-                      ) : null}
-                    </div>
-                  ))}
+                  {/* Anexo */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded transition-colors group text-left hover:border-white/30"
+                    >
+                      <span className="text-white/40 group-hover:text-[#eab308]"><IconPaperclip className="w-5 h-5" /></span>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] font-bold text-white/40 leading-none mb-1">ANEXO</p>
+                        <p className="text-xs font-semibold text-white/80 truncate">{uploading ? "Enviando..." : "Adicionar"}</p>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Lembrete */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded transition-colors group text-left hover:border-white/30"
+                    >
+                      <span className="text-white/40 group-hover:text-[#eab308]"><IconAlarm className="w-5 h-5" /></span>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] font-bold text-white/40 leading-none mb-1">LEMBRETE</p>
+                        <p className="text-xs font-semibold text-white/80 truncate">Configurar</p>
+                      </div>
+                    </button>
+                  </div>
                 </div>
 
                 <input
