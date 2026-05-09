@@ -160,7 +160,7 @@ function AssignModal({
           </button>
         </div>
 
-        {/* Search */}
+        {/* Busca */}
         <div className="p-4 border-b border-white/10">
           <div className="relative">
             <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
@@ -323,7 +323,7 @@ export default function ChecklistsAplicadosPage() {
           <Link href="/planos" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all">
             <IconClock className="w-5 h-5" /><span>Planos de Ação</span>
           </Link>
-          <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all">
+          <a href="/relatorios" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all">
             <IconReport className="w-5 h-5" /><span>Relatórios</span>
           </a>
           <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all">

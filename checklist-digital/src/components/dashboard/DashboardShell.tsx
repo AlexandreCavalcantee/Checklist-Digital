@@ -314,13 +314,13 @@ export function DashboardShell() {
             <IconClock className="w-5 h-5" />
             <span>Planos de Ação</span>
           </Link>
-          <a
+          <Link
             className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all"
-            href="#"
+            href="/relatorios"
           >
             <IconReport className="w-5 h-5" />
             <span>Relatórios</span>
-          </a>
+          </Link>
           <a
             className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all"
             href="#"
