@@ -145,9 +145,9 @@ export default function PlanosDeAcaoPage() {
           <a className="flex items-center space-x-3 px-3 py-2 rounded-lg bg-[#1e1e1e] text-[#eab308] border-l-4 border-[#eab308]">
             <IconClock c="w-5 h-5" /><span>Planos de Ação</span>
           </a>
-          <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all">
+          <Link href="/relatorios" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all">
             <IconReport c="w-5 h-5" /><span>Relatórios</span>
-          </a>
+          </Link>
           <a href="#" className="flex items-center space-x-3 px-3 py-2 rounded-lg text-white/50 hover:bg-[#1e1e1e] hover:text-white transition-all">
             <IconSettings c="w-5 h-5" /><span>Configurações</span>
           </a>
