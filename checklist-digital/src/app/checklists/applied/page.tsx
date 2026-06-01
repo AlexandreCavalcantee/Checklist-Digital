@@ -11,9 +11,24 @@ type Tarefa = {
   prioridade: string;
   status: string;
   createdAt: string;
+  setor: string | null;
   responsavelId: string | null;
   responsavel: { id: string; nome: string } | null;
 };
+
+const SETOR_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "financas", label: "Finanças" },
+  { value: "operacoes", label: "Operações" },
+  { value: "qualidade", label: "Qualidade" },
+  { value: "rh", label: "RH" },
+  { value: "ti", label: "TI" },
+  { value: "outros", label: "Outros" },
+];
+
+function setorLabel(v: string | null): string {
+  if (!v) return "Sem setor";
+  return SETOR_OPTIONS.find((s) => s.value === v)?.label ?? v;
+}
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -106,18 +121,43 @@ function AssignModal({
   profiles,
   onClose,
   onSaved,
+  onSetorSaved,
 }: {
   tarefa: Tarefa;
   profiles: Profile[];
   onClose: () => void;
   onSaved: (tarefaId: string, perfil: Profile | null) => void;
+  onSetorSaved: (tarefaId: string, setor: string | null) => void;
 }) {
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [savingSetor, setSavingSetor] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  async function saveSetor(value: string) {
+    const novo = value === "" ? null : value;
+    setSavingSetor(true);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/checklists/${tarefa.id}/assign`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setor: novo }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error((j as { error?: string })?.error || "Erro ao salvar setor");
+      }
+      onSetorSaved(tarefa.id, novo);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro inesperado");
+    } finally {
+      setSavingSetor(false);
+    }
+  }
 
   const filtrados = profiles.filter((p) =>
     p.nome.toLowerCase().includes(query.toLowerCase()) ||
@@ -158,6 +198,22 @@ function AssignModal({
           <button onClick={onClose} className="text-white/40 hover:text-white transition-colors ml-4 mt-0.5">
             <IconX className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Setor */}
+        <div className="p-4 border-b border-white/10">
+          <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">Setor do checklist</p>
+          <select
+            defaultValue={tarefa.setor ?? ""}
+            onChange={(e) => void saveSetor(e.target.value)}
+            disabled={savingSetor}
+            className="w-full px-3 py-2.5 bg-black/40 border border-white/10 rounded-lg text-sm text-white/80 focus:outline-none focus:border-[#eab308]/50 disabled:opacity-50"
+          >
+            <option value="" className="bg-[#0b0b0b]">Sem setor</option>
+            {SETOR_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value} className="bg-[#0b0b0b]">{s.label}</option>
+            ))}
+          </select>
         </div>
 
         {/* Busca */}
@@ -281,6 +337,11 @@ export default function ChecklistsAplicadosPage() {
           : t
       )
     );
+  }
+
+  function handleSetorSaved(tarefaId: string, setor: string | null) {
+    setTarefas((prev) => prev.map((t) => (t.id === tarefaId ? { ...t, setor } : t)));
+    setModalTarefa((m) => (m && m.id === tarefaId ? { ...m, setor } : m));
   }
 
   const filtradas = tarefas.filter((t) => {
@@ -460,6 +521,20 @@ export default function ChecklistsAplicadosPage() {
                         </span>
                       </div>
 
+                      {/* Setor */}
+                      <div>
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border ${
+                          tarefa.setor
+                            ? "bg-white/5 text-white/70 border-white/10"
+                            : "bg-white/[0.02] text-white/30 border-white/5"
+                        }`}>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2m-16 0H3m6-4h6m-6-4h6m-6-4h6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                          </svg>
+                          {setorLabel(tarefa.setor)}
+                        </span>
+                      </div>
+
                       {/* Descrição */}
                       {tarefa.descricao && (
                         <p className="text-xs text-white/40 line-clamp-2 leading-relaxed">{tarefa.descricao}</p>
@@ -526,6 +601,7 @@ export default function ChecklistsAplicadosPage() {
           profiles={profiles}
           onClose={() => setModalTarefa(null)}
           onSaved={handleSaved}
+          onSetorSaved={handleSetorSaved}
         />
       )}
     </div>

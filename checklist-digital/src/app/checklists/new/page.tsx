@@ -647,6 +647,71 @@ function PriorityPopover(props: {
   );
 }
 
+function IconBuilding(props: { className?: string }) {
+  return (
+    <svg className={props.className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2m-16 0H3m4-4h.01M7 13h.01M7 9h.01M11 17h.01M11 13h.01M11 9h.01M15 17h.01M15 13h.01M15 9h.01" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </svg>
+  );
+}
+
+const SETOR_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "financas", label: "Finanças" },
+  { value: "operacoes", label: "Operações" },
+  { value: "qualidade", label: "Qualidade" },
+  { value: "rh", label: "RH" },
+  { value: "ti", label: "TI" },
+  { value: "outros", label: "Outros" },
+];
+
+function setorLabelNew(v: string | null) {
+  return SETOR_OPTIONS.find((s) => s.value === v)?.label ?? "Sem setor";
+}
+
+function SetorPopover(props: {
+  open: boolean;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  value: string | null;
+  onChange: (v: string | null) => void;
+  onClose: () => void;
+}) {
+  const { open, anchorRef, value, onChange, onClose } = props;
+  return (
+    <PopoverShell open={open} anchorRef={anchorRef} onClose={onClose}>
+      <div className="p-2 max-h-64 overflow-y-auto">
+        <button
+          type="button"
+          onClick={() => { onChange(null); onClose(); }}
+          className={cx(
+            "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm mb-1",
+            value === null ? "bg-[#eab308]/15 text-[#eab308]" : "text-white/60 hover:bg-white/5 hover:text-white"
+          )}
+        >
+          <span>Sem setor</span>
+          {value === null && <span className="text-[#eab308] font-black">✓</span>}
+        </button>
+        {SETOR_OPTIONS.map((opt) => {
+          const selected = opt.value === value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); onClose(); }}
+              className={cx(
+                "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm",
+                selected ? "bg-[#eab308]/15 text-[#eab308]" : "text-white/70 hover:bg-white/5 hover:text-white"
+              )}
+            >
+              <span>{opt.label}</span>
+              {selected && <span className="text-[#eab308] font-black">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+    </PopoverShell>
+  );
+}
+
 export default function NewChecklistPage() {
   const [search, setSearch] = useState("");
   const [title, setTitle] = useState("");
@@ -661,6 +726,9 @@ export default function NewChecklistPage() {
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [priority, setPriority] = useState<1 | 2 | 3 | 4>(4);
   const priorityBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [setorOpen, setSetorOpen] = useState(false);
+  const [setor, setSetor] = useState<string | null>(null);
+  const setorBtnRef = useRef<HTMLButtonElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploads, setUploads] = useState<Array<{ id: string; name: string; size: number }>>([]);
   const [uploading, setUploading] = useState(false);
@@ -690,6 +758,7 @@ export default function NewChecklistPage() {
           description: description.trim() || undefined,
           notifyTeam: notify,
           responsavelId: assignee?.id ?? null,
+          setor,
           startDate: startDate?.toISOString() ?? null,
           endDate: endDate?.toISOString() ?? null,
         }),
@@ -968,6 +1037,32 @@ export default function NewChecklistPage() {
                       value={priority}
                       onChange={setPriority}
                       onClose={() => setPriorityOpen(false)}
+                    />
+                  </div>
+
+                  {/* Setor */}
+                  <div className="relative">
+                    <button
+                      ref={setorBtnRef}
+                      type="button"
+                      onClick={() => setSetorOpen((v) => !v)}
+                      className={cx(
+                        "w-full flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border rounded transition-colors group text-left hover:border-white/30",
+                        setorOpen ? "border-[#eab308]/60" : "border-white/10"
+                      )}
+                    >
+                      <span className="text-white/40 group-hover:text-[#eab308]"><IconBuilding className="w-5 h-5" /></span>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] font-bold text-white/40 leading-none mb-1">SETOR</p>
+                        <p className="text-xs font-semibold text-white/80 truncate">{setorLabelNew(setor)}</p>
+                      </div>
+                    </button>
+                    <SetorPopover
+                      open={setorOpen}
+                      anchorRef={setorBtnRef}
+                      value={setor}
+                      onChange={setSetor}
+                      onClose={() => setSetorOpen(false)}
                     />
                   </div>
 

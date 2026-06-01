@@ -79,13 +79,20 @@ export async function POST(req: Request) {
 
   const userId = authData.user.id;
 
-  // Insere ou atualiza na tabela profiles com os dados extras
+  // Insere ou atualiza na tabela profiles com os dados extras (incl. setor).
   const { error: profileError } = await supabaseAdmin
     .from("profiles")
-    .upsert({ id: userId, full_name: name });
+    .upsert({ id: userId, full_name: name, setor: body.department });
 
   if (profileError) {
     console.error("[users POST] profile upsert error:", profileError);
+    // Fallback: se a coluna `setor` ainda não existir no banco, grava ao menos o nome.
+    const { error: retryError } = await supabaseAdmin
+      .from("profiles")
+      .upsert({ id: userId, full_name: name });
+    if (retryError) {
+      console.error("[users POST] profile upsert retry error:", retryError);
+    }
     // não falha — o auth user já foi criado
   }
 

@@ -32,6 +32,7 @@ export async function GET() {
     status: t.status,
     createdAt: t.created_at,
     updatedAt: t.updated_at,
+    setor: (t.setor as string | null) ?? null,
     responsavelId: t.responsavel_id ?? null,
     responsavel: t.responsavel_id ? (profileMap[t.responsavel_id] ?? null) : null,
   }));

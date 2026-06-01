@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -11,7 +11,9 @@ interface Tarefa {
   prioridade: string;
   responsavelId: string | null;
   responsavelNome: string | null;
+  setor: string | null;
   tempoEstimadoMin: number | null;
+  concluidaEm: string | null;
   createdAt: string;
 }
 
@@ -19,12 +21,23 @@ interface CollaboratorStats {
   id: string;
   name: string;
   initials: string;
+  setor: string | null;
   prioridade: string;
   tasks: number;
+  completed: number;
   compliance: number;
   avgDelayMin: number;
   badge: "Excelente" | "Regular" | "Crítico";
   badgeVariant: "excellent" | "regular" | "critical";
+}
+
+interface SetorStats {
+  setor: string | null;
+  label: string;
+  tasks: number;
+  completed: number;
+  completionRate: number;
+  employees: number;
 }
 
 interface ChartPoint {
@@ -37,6 +50,13 @@ interface StatusBreakdown {
   label: string;
   count: number;
   pct: number;
+}
+
+interface Profile {
+  id: string;
+  nome: string;
+  email: string | null;
+  setor: string | null;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -118,6 +138,20 @@ function IconRefresh({ c }: { c?: string }) {
     </svg>
   );
 }
+function IconBuilding({ c }: { c?: string }) {
+  return (
+    <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2m-16 0H3m4-4h.01M7 13h.01M7 9h.01M11 17h.01M11 13h.01M11 9h.01M15 17h.01M15 13h.01M15 9h.01" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </svg>
+  );
+}
+function IconClose({ c }: { c?: string }) {
+  return (
+    <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </svg>
+  );
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const DONE_STATUS = "concluido";
@@ -180,6 +214,38 @@ function statusColor(status: string): string {
   return "bg-white/40";
 }
 
+// ─── Setores ──────────────────────────────────────────────────────────────────
+const SETOR_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "financas", label: "Finanças" },
+  { value: "operacoes", label: "Operações" },
+  { value: "qualidade", label: "Qualidade" },
+  { value: "rh", label: "RH" },
+  { value: "ti", label: "TI" },
+  { value: "outros", label: "Outros" },
+];
+
+const SETOR_LABELS: Record<string, string> = Object.fromEntries(
+  SETOR_OPTIONS.map((s) => [s.value, s.label])
+);
+
+const NO_SETOR = "__none__";
+
+function setorLabel(setor: string | null): string {
+  if (!setor) return "Não definido";
+  return SETOR_LABELS[setor] ?? setor;
+}
+
+const PRIORIDADE_LABELS: Record<string, string> = {
+  baixa: "Baixa",
+  media: "Média",
+  alta: "Alta",
+  critica: "Crítica",
+};
+
+function prioridadeLabel(p: string): string {
+  return PRIORIDADE_LABELS[p] ?? p;
+}
+
 // CSV uses ";" so Excel pt-BR opens it without an import wizard.
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -197,7 +263,7 @@ function formatDateTimeBR(iso: string): string {
   return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-function periodLabel(p: "semana" | "mes" | "trimestre"): string {
+function periodLabel(p: Period): string {
   return p === "semana" ? "Última semana" : p === "mes" ? "Último mês" : "Último trimestre";
 }
 
@@ -263,9 +329,215 @@ function Skeleton({ className }: { className?: string }) {
 // ─── Period filter helper ─────────────────────────────────────────────────────
 type Period = "semana" | "mes" | "trimestre";
 
+// ─── Metric computation ───────────────────────────────────────────────────────
+interface Metrics {
+  totalTasks: number;
+  completionRate: number;
+  onTime: number;
+  delayed: number;
+  chartPoints: ChartPoint[];
+  collaborators: CollaboratorStats[];
+  statusBreakdown: StatusBreakdown[];
+  setorBreakdown: SetorStats[];
+}
+
+function buildChartPoints(tasks: Tarefa[], period: Period): ChartPoint[] {
+  if (period === "semana") {
+    const days = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const grouped: Record<string, number> = {};
+    days.forEach((d) => (grouped[d] = 0));
+    tasks.forEach((task) => {
+      const d = new Date(task.createdAt);
+      const dayLabel = days[d.getDay()];
+      if (dayLabel) grouped[dayLabel] = (grouped[dayLabel] ?? 0) + 1;
+    });
+    return days.map((d) => ({ label: d, value: grouped[d] ?? 0 }));
+  }
+  if (period === "mes") {
+    const grouped: Record<string, number> = { S1: 0, S2: 0, S3: 0, S4: 0, S5: 0 };
+    tasks.forEach((task) => {
+      const d = new Date(task.createdAt);
+      const weekOfMonth = Math.min(5, Math.ceil(d.getDate() / 7));
+      grouped[`S${weekOfMonth}`] = (grouped[`S${weekOfMonth}`] ?? 0) + 1;
+    });
+    return ["S1", "S2", "S3", "S4", "S5"].map((k) => ({ label: k, value: grouped[k] ?? 0 }));
+  }
+  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const now = new Date();
+  const buckets = Array.from({ length: 3 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (2 - i), 1);
+    return { key: `${d.getFullYear()}-${d.getMonth()}`, label: months[d.getMonth()] ?? "—", value: 0 };
+  });
+  const bucketMap = new Map(buckets.map((b) => [b.key, b]));
+  tasks.forEach((task) => {
+    const d = new Date(task.createdAt);
+    const b = bucketMap.get(`${d.getFullYear()}-${d.getMonth()}`);
+    if (b) b.value += 1;
+  });
+  return buckets.map((b) => ({ label: b.label, value: b.value }));
+}
+
+function computeMetrics(allTasks: Tarefa[], period: Period, setorFilter: string, userFilter: string): Metrics {
+  // Filtro por usuário específico (afeta todas as seções, inclusive setores).
+  const scoped = userFilter === "todos" ? allTasks : allTasks.filter((t) => t.responsavelId === userFilter);
+
+  // Filtro por setor aplicado a KPIs, gráfico, status e ranking.
+  const tasks =
+    setorFilter === "todos"
+      ? scoped
+      : setorFilter === NO_SETOR
+      ? scoped.filter((t) => !t.setor)
+      : scoped.filter((t) => t.setor === setorFilter);
+
+  const total = tasks.length;
+  const concluidas = tasks.filter((x) => isDone(x.status));
+  const completionRate = total > 0 ? Math.round((concluidas.length / total) * 100) : 0;
+
+  // Status breakdown
+  const statusCounts: Record<string, number> = {};
+  for (const task of tasks) {
+    const key = (task.status ?? "pendente").toLowerCase();
+    statusCounts[key] = (statusCounts[key] ?? 0) + 1;
+  }
+  const statusBreakdown: StatusBreakdown[] = Object.entries(statusCounts)
+    .map(([key, count]) => ({
+      key,
+      label: statusLabel(key),
+      count,
+      pct: total > 0 ? Math.round((count / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Collaborator ranking
+  const statsMap = new Map<
+    string,
+    { name: string; setor: string | null; tasks: number; completed: number; totalDelay: number; delayCount: number; prioridadeCounts: Record<string, number> }
+  >();
+  tasks.forEach((task) => {
+    if (!task.responsavelId) return;
+    const name = task.responsavelNome ?? `Usuário ${task.responsavelId.slice(0, 6)}`;
+    if (!statsMap.has(task.responsavelId)) {
+      statsMap.set(task.responsavelId, {
+        name,
+        setor: task.setor,
+        tasks: 0,
+        completed: 0,
+        totalDelay: 0,
+        delayCount: 0,
+        prioridadeCounts: {},
+      });
+    }
+    const s = statsMap.get(task.responsavelId)!;
+    s.tasks += 1;
+    s.prioridadeCounts[task.prioridade] = (s.prioridadeCounts[task.prioridade] ?? 0) + 1;
+    if (isDone(task.status)) s.completed += 1;
+  });
+
+  const collaborators: CollaboratorStats[] = Array.from(statsMap.entries())
+    .map(([id, s]) => {
+      const compliance = s.tasks > 0 ? Math.round((s.completed / s.tasks) * 100) : 0;
+      const avgDelayMin = s.delayCount > 0 ? Math.round(s.totalDelay / s.delayCount) : 0;
+      const { badge, badgeVariant } = determineBadge(compliance);
+      const topPrioridade = Object.entries(s.prioridadeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
+      return {
+        id,
+        name: s.name,
+        initials: getInitials(s.name),
+        setor: s.setor,
+        prioridade: topPrioridade,
+        tasks: s.tasks,
+        completed: s.completed,
+        compliance,
+        avgDelayMin,
+        badge,
+        badgeVariant,
+      };
+    })
+    .sort((a, b) => b.compliance - a.compliance || b.tasks - a.tasks);
+
+  // Setor breakdown — sobre o conjunto filtrado por usuário (mas ignora o filtro
+  // de setor), para que o painel por setor mostre o panorama do escopo atual.
+  const setorMap = new Map<string, { tasks: number; completed: number; employees: Set<string> }>();
+  scoped.forEach((task) => {
+    const key = task.setor ?? NO_SETOR;
+    if (!setorMap.has(key)) setorMap.set(key, { tasks: 0, completed: 0, employees: new Set() });
+    const s = setorMap.get(key)!;
+    s.tasks += 1;
+    if (isDone(task.status)) s.completed += 1;
+    if (task.responsavelId) s.employees.add(task.responsavelId);
+  });
+  const setorBreakdown: SetorStats[] = Array.from(setorMap.entries())
+    .map(([key, s]) => ({
+      setor: key === NO_SETOR ? null : key,
+      label: key === NO_SETOR ? "Não definido" : setorLabel(key),
+      tasks: s.tasks,
+      completed: s.completed,
+      completionRate: s.tasks > 0 ? Math.round((s.completed / s.tasks) * 100) : 0,
+      employees: s.employees.size,
+    }))
+    .sort((a, b) => b.tasks - a.tasks);
+
+  return {
+    totalTasks: total,
+    completionRate,
+    onTime: concluidas.length,
+    delayed: total - concluidas.length,
+    chartPoints: buildChartPoints(tasks, period),
+    collaborators,
+    statusBreakdown,
+    setorBreakdown,
+  };
+}
+
+// ─── Individual performance detail ────────────────────────────────────────────
+interface CollaboratorDetail {
+  id: string;
+  name: string;
+  setor: string | null;
+  tasks: Tarefa[];
+  total: number;
+  completed: number;
+  completionRate: number;
+  statusCounts: Array<{ key: string; label: string; count: number }>;
+  prioridadeCounts: Array<{ key: string; label: string; count: number }>;
+}
+
+function computeDetail(allTasks: Tarefa[], id: string): CollaboratorDetail | null {
+  const tasks = allTasks.filter((t) => t.responsavelId === id);
+  if (tasks.length === 0) return null;
+  const name = tasks[0].responsavelNome ?? `Usuário ${id.slice(0, 6)}`;
+  const setor = tasks.find((t) => t.setor)?.setor ?? null;
+  const completed = tasks.filter((t) => isDone(t.status)).length;
+
+  const statusMap: Record<string, number> = {};
+  const prioMap: Record<string, number> = {};
+  tasks.forEach((t) => {
+    statusMap[t.status] = (statusMap[t.status] ?? 0) + 1;
+    prioMap[t.prioridade] = (prioMap[t.prioridade] ?? 0) + 1;
+  });
+
+  return {
+    id,
+    name,
+    setor,
+    tasks: [...tasks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    total: tasks.length,
+    completed,
+    completionRate: Math.round((completed / tasks.length) * 100),
+    statusCounts: Object.entries(statusMap)
+      .map(([key, count]) => ({ key, label: statusLabel(key), count }))
+      .sort((a, b) => b.count - a.count),
+    prioridadeCounts: Object.entries(prioMap)
+      .map(([key, count]) => ({ key, label: prioridadeLabel(key), count }))
+      .sort((a, b) => b.count - a.count),
+  };
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function RelatoriosPage() {
   const [period, setPeriod] = useState<Period>("semana");
+  const [setorFilter, setSetorFilter] = useState<string>("todos");
+  const [userFilter, setUserFilter] = useState<string>("todos");
   const [search, setSearch] = useState("");
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -273,147 +545,34 @@ export default function RelatoriosPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
 
-  // Computed metrics
-  const [completionRate, setCompletionRate] = useState(0);
-  const [totalTasks, setTotalTasks] = useState(0);
-  const [onTime, setOnTime] = useState(0);
-  const [delayed, setDelayed] = useState(0);
-  const [chartPoints, setChartPoints] = useState<ChartPoint[]>([]);
-  const [collaborators, setCollaborators] = useState<CollaboratorStats[]>([]);
-  const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/relatorios?period=${period}`, { cache: "no-store" });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(j?.error || `Falha na requisição (${res.status})`);
+      const [relRes, profRes] = await Promise.all([
+        fetch(`/api/relatorios?period=${period}`, { cache: "no-store" }),
+        fetch(`/api/profiles`, { cache: "no-store" }),
+      ]);
+
+      if (!relRes.ok) {
+        const j = (await relRes.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error || `Falha na requisição (${relRes.status})`);
       }
 
-      const data = (await res.json()) as { tarefas: Tarefa[] };
-      const t = data.tarefas ?? [];
-      setTarefas(t);
+      const data = (await relRes.json()) as { tarefas: Tarefa[] };
+      setTarefas(data.tarefas ?? []);
 
-      // ── KPIs ─────────────────────────────────────────────────────────────
-      const total = t.length;
-      const concluidas = t.filter((x) => isDone(x.status));
-      const rate = total > 0 ? Math.round((concluidas.length / total) * 100) : 0;
-      setTotalTasks(total);
-      setCompletionRate(rate);
-      setOnTime(concluidas.length);
-      setDelayed(total - concluidas.length);
-
-      // ── Status breakdown ─────────────────────────────────────────────────
-      const statusCounts: Record<string, number> = {};
-      for (const task of t) {
-        const key = (task.status ?? "pendente").toLowerCase();
-        statusCounts[key] = (statusCounts[key] ?? 0) + 1;
-      }
-      const breakdown: StatusBreakdown[] = Object.entries(statusCounts)
-        .map(([key, count]) => ({
-          key,
-          label: statusLabel(key),
-          count,
-          pct: total > 0 ? Math.round((count / total) * 100) : 0,
-        }))
-        .sort((a, b) => b.count - a.count);
-      setStatusBreakdown(breakdown);
-
-      // ── Chart ────────────────────────────────────────────────────────────
-      if (period === "semana") {
-        const days = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-        const grouped: Record<string, number> = {};
-        days.forEach((d) => (grouped[d] = 0));
-        t.forEach((task) => {
-          const d = new Date(task.createdAt);
-          const dayLabel = days[d.getDay()];
-          if (dayLabel) grouped[dayLabel] = (grouped[dayLabel] ?? 0) + 1;
-        });
-        setChartPoints(days.map((d) => ({ label: d, value: grouped[d] ?? 0 })));
-      } else if (period === "mes") {
-        // Group by week within current month, last 4 weeks
-        const grouped: Record<string, number> = { S1: 0, S2: 0, S3: 0, S4: 0, S5: 0 };
-        t.forEach((task) => {
-          const d = new Date(task.createdAt);
-          const weekOfMonth = Math.min(5, Math.ceil(d.getDate() / 7));
-          const key = `S${weekOfMonth}`;
-          grouped[key] = (grouped[key] ?? 0) + 1;
-        });
-        setChartPoints(["S1", "S2", "S3", "S4", "S5"].map((k) => ({ label: k, value: grouped[k] ?? 0 })));
-      } else {
-        // Last 3 calendar months — group by year-month to avoid cross-year collisions
-        const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-        const now = new Date();
-        const buckets = Array.from({ length: 3 }, (_, i) => {
-          const d = new Date(now.getFullYear(), now.getMonth() - (2 - i), 1);
-          return { key: `${d.getFullYear()}-${d.getMonth()}`, label: months[d.getMonth()] ?? "—", value: 0 };
-        });
-        const bucketMap = new Map(buckets.map((b) => [b.key, b]));
-        t.forEach((task) => {
-          const d = new Date(task.createdAt);
-          const key = `${d.getFullYear()}-${d.getMonth()}`;
-          const b = bucketMap.get(key);
-          if (b) b.value += 1;
-        });
-        setChartPoints(buckets.map((b) => ({ label: b.label, value: b.value })));
+      if (profRes.ok) {
+        const pdata = (await profRes.json()) as { items: Profile[] };
+        setProfiles(pdata.items ?? []);
       }
 
-      // ── Collaborator ranking ─────────────────────────────────────────────
-      const statsMap = new Map<
-        string,
-        { name: string; tasks: number; completed: number; totalDelay: number; delayCount: number; prioridadeCounts: Record<string, number> }
-      >();
-
-      t.forEach((task) => {
-        if (!task.responsavelId) return;
-        const name = task.responsavelNome ?? `Usuário ${task.responsavelId.slice(0, 6)}`;
-        if (!statsMap.has(task.responsavelId)) {
-          statsMap.set(task.responsavelId, {
-            name,
-            tasks: 0,
-            completed: 0,
-            totalDelay: 0,
-            delayCount: 0,
-            prioridadeCounts: {},
-          });
-        }
-        const s = statsMap.get(task.responsavelId)!;
-        s.tasks += 1;
-        s.prioridadeCounts[task.prioridade] = (s.prioridadeCounts[task.prioridade] ?? 0) + 1;
-
-        if (isDone(task.status)) {
-          s.completed += 1;
-        }
-      });
-
-      const colabs: CollaboratorStats[] = Array.from(statsMap.entries())
-        .map(([id, s]) => {
-          const compliance = s.tasks > 0 ? Math.round((s.completed / s.tasks) * 100) : 0;
-          const avgDelayMin = s.delayCount > 0 ? Math.round(s.totalDelay / s.delayCount) : 0;
-          const { badge, badgeVariant } = determineBadge(compliance);
-          // Most common priority assigned to this collaborator
-          const topPrioridade =
-            Object.entries(s.prioridadeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
-
-          return {
-            id,
-            name: s.name,
-            initials: getInitials(s.name),
-            prioridade: topPrioridade,
-            tasks: s.tasks,
-            compliance,
-            avgDelayMin,
-            badge,
-            badgeVariant,
-          };
-        })
-        .sort((a, b) => b.compliance - a.compliance || b.tasks - a.tasks);
-
-      setCollaborators(colabs);
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Erro ao buscar dados:", err);
@@ -431,14 +590,26 @@ export default function RelatoriosPage() {
     if (mounted) void fetchData();
   }, [fetchData, mounted]);
 
+  const metrics = useMemo(() => computeMetrics(tarefas, period, setorFilter, userFilter), [tarefas, period, setorFilter, userFilter]);
+  const { totalTasks, completionRate, onTime, delayed, chartPoints, collaborators, statusBreakdown, setorBreakdown } = metrics;
+
   const performance = getOverallPerformance(completionRate);
+
+  const detail = useMemo(
+    () => (selectedId ? computeDetail(tarefas, selectedId) : null),
+    [selectedId, tarefas]
+  );
 
   const exportCSV = useCallback(() => {
     const lines: string[] = [];
     const generatedAt = new Date();
 
+    const userName = userFilter === "todos" ? "Todos" : profiles.find((p) => p.id === userFilter)?.nome ?? userFilter;
+
     lines.push(csvRow(["Relatório de Performance"]));
     lines.push(csvRow(["Período", periodLabel(period)]));
+    lines.push(csvRow(["Setor", setorFilter === "todos" ? "Todos" : setorFilter === NO_SETOR ? "Não definido" : setorLabel(setorFilter)]));
+    lines.push(csvRow(["Usuário", userName]));
     lines.push(csvRow(["Gerado em", generatedAt.toLocaleString("pt-BR")]));
     lines.push("");
 
@@ -452,6 +623,13 @@ export default function RelatoriosPage() {
     lines.push(csvRow(["SLA Score", performance.sla]));
     lines.push("");
 
+    lines.push(csvRow(["Performance por Setor"]));
+    lines.push(csvRow(["Setor", "Tarefas", "Concluídas", "Taxa (%)", "Funcionários"]));
+    setorBreakdown.forEach((s) => {
+      lines.push(csvRow([s.label, s.tasks, s.completed, s.completionRate, s.employees]));
+    });
+    lines.push("");
+
     lines.push(csvRow(["Distribuição por Status"]));
     lines.push(csvRow(["Status", "Quantidade", "Percentual (%)"]));
     statusBreakdown.forEach((s) => {
@@ -460,29 +638,36 @@ export default function RelatoriosPage() {
     lines.push("");
 
     lines.push(csvRow(["Ranking de Colaboradores"]));
-    lines.push(csvRow(["Rank", "Colaborador", "Prioridade dominante", "Tarefas", "SLA Score (%)", "Atraso médio (min)", "Badge"]));
+    lines.push(csvRow(["Rank", "Colaborador", "Setor", "Prioridade dominante", "Tarefas", "Concluídas", "SLA Score (%)", "Badge"]));
     collaborators.forEach((c, i) => {
-      lines.push(csvRow([i + 1, c.name, c.prioridade, c.tasks, c.compliance, c.avgDelayMin, c.badge]));
+      lines.push(csvRow([i + 1, c.name, setorLabel(c.setor), prioridadeLabel(c.prioridade), c.tasks, c.completed, c.compliance, c.badge]));
     });
     lines.push("");
 
     lines.push(csvRow(["Tarefas do Período"]));
-    lines.push(csvRow(["ID", "Título", "Status", "Prioridade", "Responsável", "Tempo estimado (min)", "Criado em"]));
-    tarefas.forEach((t) => {
+    lines.push(csvRow(["ID", "Título", "Status", "Prioridade", "Responsável", "Setor", "Tempo estimado (min)", "Criado em"]));
+    const scoped = userFilter === "todos" ? tarefas : tarefas.filter((t) => t.responsavelId === userFilter);
+    const exported =
+      setorFilter === "todos"
+        ? scoped
+        : setorFilter === NO_SETOR
+        ? scoped.filter((t) => !t.setor)
+        : scoped.filter((t) => t.setor === setorFilter);
+    exported.forEach((t) => {
       lines.push(
         csvRow([
           t.id,
           t.titulo,
           statusLabel(t.status),
-          t.prioridade,
+          prioridadeLabel(t.prioridade),
           t.responsavelNome ?? "—",
+          setorLabel(t.setor),
           t.tempoEstimadoMin ?? "",
           formatDateTimeBR(t.createdAt),
         ])
       );
     });
 
-    // BOM so Excel pt-BR detects UTF-8 and renders accents correctly.
     const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const stamp = generatedAt.toISOString().slice(0, 10);
@@ -493,16 +678,38 @@ export default function RelatoriosPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [period, totalTasks, completionRate, onTime, delayed, performance, statusBreakdown, collaborators, tarefas]);
+  }, [period, setorFilter, userFilter, profiles, totalTasks, completionRate, onTime, delayed, performance, statusBreakdown, setorBreakdown, collaborators, tarefas]);
 
   const filteredCollaborators = collaborators.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.prioridade.toLowerCase().includes(search.toLowerCase())
+      setorLabel(c.setor).toLowerCase().includes(search.toLowerCase())
   );
 
   const ratio = delayed > 0 ? `${Math.round(onTime / Math.max(delayed, 1))}:1` : `${onTime}:0`;
   const onTimeDeg = totalTasks > 0 ? Math.round((onTime / totalTasks) * 360) : 0;
+
+  const maxSetorTasks = Math.max(...setorBreakdown.map((s) => s.tasks), 1);
+
+  async function updateSetor(profileId: string, value: string) {
+    const setor = value === NO_SETOR ? null : value;
+    try {
+      const res = await fetch("/api/profiles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: profileId, setor }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error || "Falha ao atualizar setor");
+      }
+      // Atualização otimista local + recarrega métricas.
+      setProfiles((prev) => prev.map((p) => (p.id === profileId ? { ...p, setor } : p)));
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível atualizar o setor.");
+    }
+  }
 
   if (!mounted) {
     return null;
@@ -583,6 +790,14 @@ export default function RelatoriosPage() {
               />
             </div>
             <button
+              onClick={() => setManageOpen(true)}
+              title="Gerenciar setores dos funcionários"
+              className="flex items-center space-x-2 bg-[#1e1e1e] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white/70 hover:text-white hover:border-white/30 transition-all"
+            >
+              <IconBuilding c="w-4 h-4" />
+              <span className="hidden sm:inline">Setores</span>
+            </button>
+            <button
               onClick={() => void fetchData()}
               disabled={loading}
               title="Atualizar dados"
@@ -615,20 +830,55 @@ export default function RelatoriosPage() {
 
           {/* Filtros */}
           <section className="flex flex-wrap items-center justify-between gap-3 p-4 bg-black rounded-xl border border-white/10">
-            <div className="flex items-center gap-2">
-              {(["semana", "mes", "trimestre"] as Period[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPeriod(p)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all border ${
-                    period === p
-                      ? "bg-[#eab308] text-black border-[#eab308]"
-                      : "bg-black/40 text-white/50 border-white/10 hover:border-white/30 hover:text-white"
-                  }`}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                {(["semana", "mes", "trimestre"] as Period[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p)}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all border ${
+                      period === p
+                        ? "bg-[#eab308] text-black border-[#eab308]"
+                        : "bg-black/40 text-white/50 border-white/10 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    {p === "semana" ? "Semana" : p === "mes" ? "Mês" : "Trimestre"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <IconBuilding c="w-4 h-4 text-white/30" />
+                <select
+                  value={setorFilter}
+                  onChange={(e) => setSetorFilter(e.target.value)}
+                  className="bg-[#1e1e1e] border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white/70 focus:outline-none focus:border-[#eab308]/50 transition-colors"
                 >
-                  {p === "semana" ? "Semana" : p === "mes" ? "Mês" : "Trimestre"}
-                </button>
-              ))}
+                  <option value="todos" className="bg-[#0b0b0b] normal-case tracking-normal">Todos os setores</option>
+                  {SETOR_OPTIONS.map((s) => (
+                    <option key={s.value} value={s.value} className="bg-[#0b0b0b] normal-case tracking-normal">
+                      {s.label}
+                    </option>
+                  ))}
+                  <option value={NO_SETOR} className="bg-[#0b0b0b] normal-case tracking-normal">Não definido</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                </svg>
+                <select
+                  value={userFilter}
+                  onChange={(e) => setUserFilter(e.target.value)}
+                  className="bg-[#1e1e1e] border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white/70 focus:outline-none focus:border-[#eab308]/50 transition-colors max-w-[200px] truncate"
+                >
+                  <option value="todos" className="bg-[#0b0b0b] normal-case tracking-normal">Todos os usuários</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id} className="bg-[#0b0b0b] normal-case tracking-normal">
+                      {p.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="flex items-center gap-3 text-xs text-white/30 font-mono">
               {loading ? (
@@ -772,6 +1022,62 @@ export default function RelatoriosPage() {
             </div>
           </section>
 
+          {/* Performance por Setor */}
+          <section className="bg-black rounded-xl border border-white/10 p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-bold text-lg">Performance por Setor</h3>
+                <p className="text-sm text-white/40">Tarefas e taxa de conclusão agrupadas por setor no período</p>
+              </div>
+              <IconBuilding c="w-5 h-5 text-white/20" />
+            </div>
+            {loading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : setorBreakdown.length === 0 ? (
+              <p className="text-sm text-white/30 py-6 text-center">Nenhuma tarefa no período</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+                {setorBreakdown.map((s) => {
+                  const active = setorFilter === (s.setor ?? NO_SETOR);
+                  return (
+                    <button
+                      key={s.setor ?? NO_SETOR}
+                      onClick={() => setSetorFilter(active ? "todos" : s.setor ?? NO_SETOR)}
+                      className={`text-left rounded-lg p-3 border transition-all ${
+                        active ? "border-[#eab308]/40 bg-[#eab308]/5" : "border-transparent hover:bg-white/[0.03]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-sm mb-1.5">
+                        <span className="font-semibold flex items-center gap-2">
+                          {s.label}
+                          {!s.setor && <span className="text-[9px] text-white/30 uppercase">(s/ setor)</span>}
+                        </span>
+                        <span className="text-white/50 font-mono text-xs">
+                          {s.tasks} tarefas · {s.employees} func.
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#eab308]/70 rounded-full transition-all"
+                            style={{ width: `${Math.round((s.tasks / maxSetorTasks) * 100)}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-mono w-28 text-right ${s.completionRate >= 50 ? "text-[#eab308]" : "text-white/50"}`}>
+                          {s.completionRate}% concluído
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           {/* Gráfico de Histórico */}
           <section className="bg-black rounded-xl border border-white/10 p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
@@ -783,6 +1089,7 @@ export default function RelatoriosPage() {
                     : period === "mes"
                     ? "Tarefas criadas por semana no último mês"
                     : "Tarefas criadas nos últimos 3 meses"}
+                  {setorFilter !== "todos" && ` · ${setorFilter === NO_SETOR ? "Não definido" : setorLabel(setorFilter)}`}
                 </p>
               </div>
               <div className="flex gap-4">
@@ -831,9 +1138,9 @@ export default function RelatoriosPage() {
           <section className="bg-black rounded-xl border border-white/10 overflow-hidden shadow-xl">
             <div className="p-5 border-b border-white/10 flex items-center justify-between bg-black/50">
               <div>
-                <h3 className="font-bold text-lg">Ranking de Colaboradores</h3>
+                <h3 className="font-bold text-lg">Performance Individual</h3>
                 <p className="text-sm text-white/40">
-                  {loading ? "Carregando..." : `${collaborators.length} colaboradores com tarefas no período`}
+                  {loading ? "Carregando..." : `${collaborators.length} colaboradores com tarefas no período · clique para ver detalhes`}
                 </p>
               </div>
             </div>
@@ -841,7 +1148,7 @@ export default function RelatoriosPage() {
               <table className="w-full text-left">
                 <thead className="bg-[#0a0a0a] border-b border-white/10">
                   <tr>
-                    {["Rank", "Colaborador", "Tarefas", "SLA Score", "Atraso Médio", "Badge"].map((h) => (
+                    {["Rank", "Colaborador", "Setor", "Tarefas", "SLA Score", "Atraso Médio", "Badge"].map((h) => (
                       <th key={h} className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-white/40">{h}</th>
                     ))}
                   </tr>
@@ -850,7 +1157,7 @@ export default function RelatoriosPage() {
                   {loading ? (
                     Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i}>
-                        {Array.from({ length: 6 }).map((_, j) => (
+                        {Array.from({ length: 7 }).map((_, j) => (
                           <td key={j} className="px-6 py-4">
                             <Skeleton className="h-4 w-full" />
                           </td>
@@ -859,7 +1166,11 @@ export default function RelatoriosPage() {
                     ))
                   ) : filteredCollaborators.length > 0 ? (
                     filteredCollaborators.map((emp, idx) => (
-                      <tr key={emp.id} className="hover:bg-white/[0.02] transition-colors cursor-pointer">
+                      <tr
+                        key={emp.id}
+                        onClick={() => setSelectedId(emp.id)}
+                        className="hover:bg-white/[0.02] transition-colors cursor-pointer"
+                      >
                         <td className={`px-6 py-4 font-black text-sm ${idx === 0 ? "text-[#eab308]" : "text-white/60"}`}>
                           #{idx + 1}
                         </td>
@@ -870,9 +1181,14 @@ export default function RelatoriosPage() {
                             </div>
                             <div>
                               <p className="text-sm font-bold">{emp.name}</p>
-                              <p className="text-xs text-white/40 truncate max-w-[160px]">Prioridade dominante: {emp.prioridade}</p>
+                              <p className="text-xs text-white/40 truncate max-w-[160px]">Prioridade dominante: {prioridadeLabel(emp.prioridade)}</p>
                             </div>
                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${emp.setor ? "bg-white/5 text-white/70 border border-white/10" : "bg-white/[0.02] text-white/30 border border-white/5"}`}>
+                            {setorLabel(emp.setor)}
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-sm font-mono">{emp.tasks}</td>
                         <td className="px-6 py-4">
@@ -900,11 +1216,13 @@ export default function RelatoriosPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-white/30 text-sm">
+                      <td colSpan={7} className="px-6 py-12 text-center text-white/30 text-sm">
                         {search
                           ? `Nenhum colaborador encontrado para "${search}"`
                           : tarefas.length === 0
                           ? "Nenhuma tarefa encontrada no período"
+                          : setorFilter !== "todos"
+                          ? "Nenhum colaborador neste setor no período"
                           : "Nenhuma tarefa atribuída a colaboradores neste período"}
                       </td>
                     </tr>
@@ -921,6 +1239,156 @@ export default function RelatoriosPage() {
           </p>
         </footer>
       </main>
+
+      {/* Modal: Performance Individual detalhada */}
+      {detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+          <button className="absolute inset-0 bg-black/70" onClick={() => setSelectedId(null)} aria-label="Fechar" type="button" />
+          <div className="relative w-full max-w-2xl mx-6 max-h-[88vh] flex flex-col rounded-2xl border border-white/10 bg-gradient-to-b from-[#141414] to-[#0b0b0b] shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-white/10 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-[#eab308]/20 text-[#eab308] flex items-center justify-center font-black">
+                  {getInitials(detail.name)}
+                </div>
+                <div>
+                  <p className="text-lg font-bold">{detail.name}</p>
+                  <p className="text-xs text-white/40 flex items-center gap-2">
+                    <IconBuilding c="w-3.5 h-3.5" /> {setorLabel(detail.setor)}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedId(null)} className="text-white/50 hover:text-white transition-colors" type="button" aria-label="Fechar">
+                <IconClose c="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* KPIs do colaborador */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-black/50 border border-white/10 rounded-xl p-4 text-center">
+                  <p className="text-2xl font-black">{detail.total}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-white/40 mt-1">Tarefas</p>
+                </div>
+                <div className="bg-black/50 border border-white/10 rounded-xl p-4 text-center">
+                  <p className="text-2xl font-black text-[#eab308]">{detail.completed}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-white/40 mt-1">Concluídas</p>
+                </div>
+                <div className="bg-black/50 border border-white/10 rounded-xl p-4 flex flex-col items-center justify-center">
+                  <Gauge pct={detail.completionRate} label="taxa" />
+                </div>
+              </div>
+
+              {/* Por status */}
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-3">Por Status</p>
+                <div className="space-y-2">
+                  {detail.statusCounts.map((s) => (
+                    <div key={s.key}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="flex items-center gap-2 text-white/70">
+                          <span className={`w-2 h-2 rounded-full ${statusColor(s.key)}`} />
+                          {s.label}
+                        </span>
+                        <span className="text-white/50 font-mono text-xs">{s.count}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${statusColor(s.key)}`}
+                          style={{ width: `${Math.round((s.count / detail.total) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Por prioridade */}
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-3">Por Prioridade</p>
+                <div className="flex flex-wrap gap-2">
+                  {detail.prioridadeCounts.map((p) => (
+                    <span key={p.key} className="text-xs px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-white/70">
+                      {p.label}: <span className="font-mono font-bold text-white">{p.count}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tarefas recentes */}
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-3">Tarefas no Período</p>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {detail.tasks.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between gap-3 bg-black/40 border border-white/5 rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm truncate">{t.titulo}</p>
+                        <p className="text-[10px] text-white/30 font-mono">{formatDateTimeBR(t.createdAt)}</p>
+                      </div>
+                      <span className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-full uppercase ${isDone(t.status) ? "bg-[#eab308]/10 text-[#eab308]" : "bg-white/5 text-white/50"}`}>
+                        {statusLabel(t.status)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Gerenciar setores */}
+      {manageOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+          <button className="absolute inset-0 bg-black/70" onClick={() => setManageOpen(false)} aria-label="Fechar" type="button" />
+          <div className="relative w-full max-w-lg mx-6 max-h-[85vh] flex flex-col rounded-2xl border border-white/10 bg-gradient-to-b from-[#141414] to-[#0b0b0b] shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-white/10 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] tracking-[0.22em] text-[#eab308] font-black uppercase">Gerenciar Setores</p>
+                <p className="mt-1 text-sm text-white/50">Atribua cada funcionário ao seu setor</p>
+              </div>
+              <button onClick={() => setManageOpen(false)} className="text-white/50 hover:text-white transition-colors" type="button" aria-label="Fechar">
+                <IconClose c="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-3">
+              {profiles.length === 0 ? (
+                <p className="text-sm text-white/30 text-center py-6">Nenhum funcionário encontrado</p>
+              ) : (
+                profiles.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-white/5 text-white/60 flex items-center justify-center font-black text-xs shrink-0">
+                        {getInitials(p.nome)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">{p.nome}</p>
+                        {p.email && <p className="text-[10px] text-white/30 truncate">{p.email}</p>}
+                      </div>
+                    </div>
+                    <select
+                      value={p.setor ?? NO_SETOR}
+                      onChange={(e) => void updateSetor(p.id, e.target.value)}
+                      className="bg-[#1e1e1e] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white/80 focus:outline-none focus:border-[#eab308]/50 shrink-0"
+                    >
+                      <option value={NO_SETOR} className="bg-[#0b0b0b]">Não definido</option>
+                      {SETOR_OPTIONS.map((s) => (
+                        <option key={s.value} value={s.value} className="bg-[#0b0b0b]">
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-white/10 bg-black/40">
+              <p className="text-[10px] text-white/30 text-center font-mono">
+                As alterações são salvas automaticamente e refletem nos relatórios.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

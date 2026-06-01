@@ -26,6 +26,11 @@ export async function GET() {
   }
 }
 
+const SETOR_VALUES = ["financas", "operacoes", "qualidade", "rh", "ti", "outros"];
+function normalizeSetor(v: unknown): string | null {
+  return typeof v === "string" && SETOR_VALUES.includes(v) ? v : null;
+}
+
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as
     | { title?: string; description?: string }
@@ -34,20 +39,32 @@ export async function POST(req: Request) {
   const title = body?.title?.trim() || "Novo Checklist (Modelo)";
   const description = body?.description?.trim();
   const responsavelId = (body as { responsavelId?: string } | null)?.responsavelId || null;
+  const setor = normalizeSetor((body as { setor?: unknown } | null)?.setor);
 
   try {
-    const { data: tarefa, error } = await supabaseAdmin
+    const base = {
+      titulo: title,
+      descricao: description || null,
+      prioridade: "media",
+      status: "pendente",
+      tenant_id: TENANT_ID,
+      responsavel_id: responsavelId,
+    };
+
+    let { data: tarefa, error } = await supabaseAdmin
       .from("tarefas")
-      .insert({
-        titulo: title,
-        descricao: description || null,
-        prioridade: "media",
-        status: "pendente",
-        tenant_id: TENANT_ID,
-        responsavel_id: responsavelId,
-      })
+      .insert(setor ? { ...base, setor } : base)
       .select()
       .single();
+
+    // Fallback: se a coluna `setor` ainda não existir, cria o checklist sem ela.
+    if (error && setor && /setor/i.test(error.message)) {
+      ({ data: tarefa, error } = await supabaseAdmin
+        .from("tarefas")
+        .insert(base)
+        .select()
+        .single());
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
