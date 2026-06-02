@@ -209,11 +209,316 @@ function formatIso(iso: string) {
   }
 }
 
+type Sugestao = { titulo: string; count: number; fonte: "banco" | "base" };
+type Responsavel = { id: string; nome: string };
+type SugestoesResponse = {
+  setor: string;
+  setorLabel: string;
+  sugestoes: Sugestao[];
+  responsaveis: Responsavel[];
+};
+
+const SETORES = [
+  { value: "operacoes", label: "Operações" },
+  { value: "qualidade", label: "Qualidade" },
+  { value: "financas", label: "Finanças" },
+  { value: "rh", label: "RH" },
+  { value: "ti", label: "TI" },
+  { value: "outros", label: "Outros" },
+];
+
+const PRIORIDADES = [
+  { value: "alta", label: "Alta" },
+  { value: "media", label: "Média" },
+  { value: "baixa", label: "Baixa" },
+];
+
+function IconSparkles(props: { className?: string }) {
+  return (
+    <svg className={props.className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+    </svg>
+  );
+}
+
+function ChecklistIAModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [step, setStep] = useState<"setor" | "sugestoes" | "confirmar">("setor");
+  const [setor, setSetor] = useState("");
+  const [loadingSug, setLoadingSug] = useState(false);
+  const [sug, setSug] = useState<SugestoesResponse | null>(null);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [titulo, setTitulo] = useState("");
+  const [responsavelId, setResponsavelId] = useState("");
+  const [prioridade, setPrioridade] = useState("media");
+  const [saving, setSaving] = useState(false);
+  const [erroSave, setErroSave] = useState<string | null>(null);
+
+  async function buscarSugestoes() {
+    if (!setor) return;
+    setLoadingSug(true);
+    try {
+      const res = await fetch(`/api/sugestoes?setor=${setor}`);
+      const json = (await res.json()) as SugestoesResponse;
+      setSug(json);
+      setSelecionados(new Set());
+      setTitulo(`Checklist de ${json.setorLabel} – ${new Date().toLocaleDateString("pt-BR")}`);
+      setStep("sugestoes");
+    } finally {
+      setLoadingSug(false);
+    }
+  }
+
+  function toggleItem(titulo: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      next.has(titulo) ? next.delete(titulo) : next.add(titulo);
+      return next;
+    });
+  }
+
+  async function criar() {
+    if (!titulo || selecionados.size === 0) return;
+    setSaving(true);
+    setErroSave(null);
+    try {
+      const res = await fetch("/api/sugestoes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo,
+          setor,
+          responsavel_id: responsavelId || undefined,
+          prioridade,
+          itens: [...selecionados],
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json() as { error?: string };
+        throw new Error(j.error ?? "Erro ao criar");
+      }
+      onCreated();
+      onClose();
+    } catch (e) {
+      setErroSave(e instanceof Error ? e.message : "Erro inesperado");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#161616] border border-white/10 rounded-2xl w-full max-w-xl shadow-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-[#ca8a04]/15 rounded-lg">
+              <IconSparkles className="w-5 h-5 text-[#eab308]" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold">Sugestão Inteligente de Checklist</h2>
+              <p className="text-xs text-white/40">Baseado nos dados reais do seu setor</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* Step 1: Setor */}
+          {step === "setor" && (
+            <>
+              <p className="text-sm text-white/60">Selecione o setor para gerar sugestões baseadas nas tarefas mais recorrentes:</p>
+              <div className="grid grid-cols-2 gap-3">
+                {SETORES.map((s) => (
+                  <button
+                    key={s.value}
+                    onClick={() => setSetor(s.value)}
+                    className={cx(
+                      "py-3 px-4 rounded-xl border text-sm font-medium transition-all text-left",
+                      setor === s.value
+                        ? "border-[#eab308] bg-[#eab308]/10 text-[#eab308]"
+                        : "border-white/10 text-white/60 hover:border-white/30 hover:text-white"
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Sugestões */}
+          {step === "sugestoes" && sug && (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-white/60">
+                  <span className="text-[#eab308] font-semibold">{sug.sugestoes.filter((s) => s.fonte === "banco").length}</span> itens encontrados no histórico •{" "}
+                  <span className="text-white/40">{sug.sugestoes.filter((s) => s.fonte === "base").length} sugestões adicionais</span>
+                </p>
+                <button onClick={() => setSelecionados(new Set())} className="text-xs text-white/30 hover:text-white/60">
+                  Limpar
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {sug.sugestoes.map((s) => (
+                  <label
+                    key={s.titulo}
+                    className={cx(
+                      "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                      selecionados.has(s.titulo)
+                        ? "border-[#eab308]/40 bg-[#eab308]/5"
+                        : "border-white/5 hover:border-white/15"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-[#eab308]"
+                      checked={selecionados.has(s.titulo)}
+                      onChange={() => toggleItem(s.titulo)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-white/90">{s.titulo}</span>
+                      {s.fonte === "banco" && s.count > 0 && (
+                        <span className="ml-2 text-[10px] bg-[#eab308]/20 text-[#eab308] px-1.5 py-0.5 rounded-full font-medium">
+                          {s.count}× usado
+                        </span>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <p className="text-xs text-white/30 text-center">{selecionados.size} itens selecionados</p>
+            </>
+          )}
+
+          {/* Step 3: Confirmar */}
+          {step === "confirmar" && sug && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">Título do checklist</label>
+                <input
+                  className="w-full bg-[#1e1e1e] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#eab308]/50"
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">Responsável</label>
+                <select
+                  className="w-full bg-[#1e1e1e] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#eab308]/50"
+                  value={responsavelId}
+                  onChange={(e) => setResponsavelId(e.target.value)}
+                >
+                  <option value="">— Atribuir depois —</option>
+                  {sug.responsaveis.map((r) => (
+                    <option key={r.id} value={r.id}>{r.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-white/50 mb-1 block">Prioridade</label>
+                <div className="flex gap-2">
+                  {PRIORIDADES.map((p) => (
+                    <button
+                      key={p.value}
+                      onClick={() => setPrioridade(p.value)}
+                      className={cx(
+                        "flex-1 py-2 rounded-lg border text-sm font-medium transition-all",
+                        prioridade === p.value
+                          ? "border-[#eab308] bg-[#eab308]/10 text-[#eab308]"
+                          : "border-white/10 text-white/50 hover:border-white/30"
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-[#1e1e1e] rounded-xl p-3">
+                <p className="text-xs text-white/40 mb-2">Itens incluídos ({selecionados.size})</p>
+                <ul className="space-y-1">
+                  {[...selecionados].map((item) => (
+                    <li key={item} className="text-xs text-white/70 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#eab308] shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {erroSave && (
+                <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{erroSave}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-white/10 flex items-center justify-between gap-3">
+          {step !== "setor" && (
+            <button
+              onClick={() => setStep(step === "confirmar" ? "sugestoes" : "setor")}
+              className="text-sm text-white/40 hover:text-white transition-colors"
+            >
+              ← Voltar
+            </button>
+          )}
+          <div className="flex-1" />
+
+          {step === "setor" && (
+            <button
+              disabled={!setor || loadingSug}
+              onClick={() => void buscarSugestoes()}
+              className="bg-[#ca8a04] hover:bg-[#eab308] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-6 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2"
+            >
+              {loadingSug ? (
+                <><IconSparkles className="w-4 h-4 animate-spin" /> Analisando...</>
+              ) : (
+                <><IconSparkles className="w-4 h-4" /> Gerar Sugestões</>
+              )}
+            </button>
+          )}
+
+          {step === "sugestoes" && (
+            <button
+              disabled={selecionados.size === 0}
+              onClick={() => setStep("confirmar")}
+              className="bg-[#ca8a04] hover:bg-[#eab308] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-6 py-2.5 rounded-lg text-sm transition-colors"
+            >
+              Continuar ({selecionados.size} itens) →
+            </button>
+          )}
+
+          {step === "confirmar" && (
+            <button
+              disabled={!titulo || selecionados.size === 0 || saving}
+              onClick={() => void criar()}
+              className="bg-[#ca8a04] hover:bg-[#eab308] disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-6 py-2.5 rounded-lg text-sm transition-colors"
+            >
+              {saving ? "Criando..." : "Criar Checklist"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardShell() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [iaModalOpen, setIaModalOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -372,31 +677,25 @@ export function DashboardShell() {
         <div className="flex-1 overflow-y-auto p-8 space-y-8">
           <section className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#ca8a04] to-[#facc15] p-8 flex items-center justify-between">
             <div className="relative z-10 max-w-2xl">
-              <h2 className="text-2xl font-black text-black mb-2 uppercase tracking-wide">
-                Importar um checklist com IA!
+              <h2 className="text-2xl font-black text-black mb-2 uppercase tracking-wide flex items-center gap-3">
+                <IconSparkles className="w-6 h-6" />
+                Sugestão Inteligente de Checklist
               </h2>
               <p className="text-black/80 font-medium">
-                Envie seu documento e a IA interpreta o conteúdo para criar um checklist
-                estruturado para suas auditorias.
+                Selecione o setor e o sistema sugere automaticamente os itens mais recorrentes com base no histórico real de tarefas.
               </p>
-              {data?.lastUpdatedAt ? (
-                <p className="mt-3 text-xs text-black/70">
-                  Última atualização: <span className="font-semibold">{formatIso(data.lastUpdatedAt)}</span>
-                </p>
-              ) : null}
-              {error ? (
-                <p className="mt-3 text-xs text-black/80">
-                  Erro: <span className="font-semibold">{error}</span>
-                </p>
-              ) : null}
+              <p className="mt-2 text-xs text-black/60 font-medium">
+                O gestor só precisa atribuir o responsável e confirmar.
+              </p>
             </div>
 
-            <Link
-              href="/checklists/new"
-              className="relative z-10 bg-black text-white hover:bg-[#111] px-8 py-3 rounded-lg font-bold shadow-xl transition-transform active:scale-95 uppercase text-sm tracking-widest border border-black/20"
+            <button
+              onClick={() => setIaModalOpen(true)}
+              className="relative z-10 bg-black text-white hover:bg-[#111] px-8 py-3 rounded-lg font-bold shadow-xl transition-transform active:scale-95 uppercase text-sm tracking-widest border border-black/20 flex items-center gap-2 shrink-0"
             >
-              Criar checklist com IA
-            </Link>
+              <IconSparkles className="w-4 h-4" />
+              Criar com Sugestão
+            </button>
 
             <div className="absolute right-0 top-0 h-full w-1/3 opacity-20 pointer-events-none">
               <svg className="h-full w-full" fill="black" preserveAspectRatio="none" viewBox="0 0 100 100">
@@ -404,6 +703,13 @@ export function DashboardShell() {
               </svg>
             </div>
           </section>
+
+          {iaModalOpen && (
+            <ChecklistIAModal
+              onClose={() => setIaModalOpen(false)}
+              onCreated={() => void load()}
+            />
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <section className="bg-black rounded-xl border border-white/10 overflow-hidden shadow-2xl">
