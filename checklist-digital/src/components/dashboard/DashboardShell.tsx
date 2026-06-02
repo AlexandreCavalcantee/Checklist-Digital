@@ -200,6 +200,183 @@ function IconWidget(props: { className?: string }) {
   );
 }
 
+type WidgetTarefa = { setor: string; status: string; prioridade: string; responsavelNome: string | null };
+
+const SETOR_LABEL: Record<string, string> = {
+  operacoes: "Operações", qualidade: "Qualidade", financas: "Finanças",
+  rh: "RH", ti: "TI", outros: "Outros",
+};
+const SETOR_CORES: Record<string, string> = {
+  operacoes: "#eab308", qualidade: "#3b82f6", financas: "#22c55e",
+  rh: "#a855f7", ti: "#f97316", outros: "#6b7280",
+};
+
+function WidgetsSection() {
+  const [tarefas, setTarefas] = useState<WidgetTarefa[]>([]);
+
+  useEffect(() => {
+    fetch("/api/relatorios?period=trimestre")
+      .then((r) => r.json())
+      .then((j: { tarefas?: WidgetTarefa[] }) => setTarefas(j.tarefas ?? []))
+      .catch(() => {});
+  }, []);
+
+  // Tarefas por setor
+  const porSetor = Object.entries(
+    tarefas.reduce<Record<string, number>>((acc, t) => {
+      const s = t.setor ?? "outros";
+      acc[s] = (acc[s] ?? 0) + 1;
+      return acc;
+    }, {})
+  ).sort((a, b) => b[1] - a[1]);
+
+  const totalSetor = porSetor.reduce((s, [, v]) => s + v, 0) || 1;
+
+  // Tarefas por prioridade
+  const porPrioridade = tarefas.reduce<Record<string, number>>(
+    (acc, t) => { acc[t.prioridade ?? "media"] = (acc[t.prioridade ?? "media"] ?? 0) + 1; return acc; },
+    { alta: 0, media: 0, baixa: 0 }
+  );
+
+  // Top responsáveis
+  const porResp = Object.entries(
+    tarefas.reduce<Record<string, number>>((acc, t) => {
+      const n = t.responsavelNome ?? "Sem responsável";
+      acc[n] = (acc[n] ?? 0) + 1;
+      return acc;
+    }, {})
+  ).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const totalResp = porResp.reduce((s, [, v]) => s + v, 0) || 1;
+
+  // Status
+  const concluidas = tarefas.filter((t) => t.status === "concluido").length;
+  const pendentes  = tarefas.filter((t) => t.status === "pendente").length;
+  const emAndamento = tarefas.filter((t) => t.status === "em_andamento").length;
+  const total = tarefas.length || 1;
+
+  return (
+    <section className="bg-black rounded-xl border border-white/10 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="font-bold text-sm uppercase tracking-widest text-white/50">Widgets</h3>
+        <span className="text-xs text-white/20">Últimos 3 meses</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* Widget 1: Tarefas por setor */}
+        <div className="bg-[#111] rounded-xl border border-white/5 p-5">
+          <p className="text-xs text-white/40 uppercase tracking-widest mb-4">Por Setor</p>
+          <div className="space-y-3">
+            {porSetor.length === 0 ? (
+              <p className="text-xs text-white/20">Sem dados</p>
+            ) : porSetor.map(([setor, count]) => (
+              <div key={setor}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-white/70">{SETOR_LABEL[setor] ?? setor}</span>
+                  <span className="text-white/40">{count}</span>
+                </div>
+                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${(count / totalSetor) * 100}%`, backgroundColor: SETOR_CORES[setor] ?? "#6b7280" }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Widget 2: Status geral */}
+        <div className="bg-[#111] rounded-xl border border-white/5 p-5">
+          <p className="text-xs text-white/40 uppercase tracking-widest mb-4">Status Geral</p>
+          <div className="flex items-center justify-center mb-4">
+            <div className="relative w-28 h-28">
+              <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1e1e1e" strokeWidth="3" />
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#22c55e" strokeWidth="3"
+                  strokeDasharray={`${(concluidas / total) * 100} 100`} strokeLinecap="round" />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-black text-white">{Math.round((concluidas / total) * 100)}%</span>
+                <span className="text-[10px] text-white/30">concluído</span>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {[
+              { label: "Concluídas", val: concluidas, cor: "bg-green-500" },
+              { label: "Em andamento", val: emAndamento, cor: "bg-blue-500" },
+              { label: "Pendentes", val: pendentes, cor: "bg-white/20" },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${item.cor}`} />
+                  <span className="text-white/60">{item.label}</span>
+                </div>
+                <span className="text-white/40">{item.val}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-1">
+            {[
+              { val: concluidas, cor: "bg-green-500" },
+              { val: emAndamento, cor: "bg-blue-500" },
+              { val: pendentes, cor: "bg-white/10" },
+            ].map((item, i) => (
+              <div key={i} className={`h-1.5 rounded-full ${item.cor}`}
+                style={{ width: `${(item.val / total) * 100}%`, minWidth: item.val > 0 ? "4px" : 0 }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Widget 3: Top responsáveis */}
+        <div className="bg-[#111] rounded-xl border border-white/5 p-5">
+          <p className="text-xs text-white/40 uppercase tracking-widest mb-4">Top Responsáveis</p>
+          <div className="space-y-3">
+            {porResp.length === 0 ? (
+              <p className="text-xs text-white/20">Sem dados</p>
+            ) : porResp.map(([nome, count], i) => {
+              const iniciais = nome.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
+              return (
+                <div key={nome} className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-[#ca8a04]/20 border border-[#eab308]/20 flex items-center justify-center text-[10px] font-bold text-[#eab308] shrink-0">
+                    {iniciais}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-white/70 truncate">{nome.split(" ")[0]}</span>
+                      <span className="text-white/30">{count}</span>
+                    </div>
+                    <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#eab308] rounded-full" style={{ width: `${(count / totalResp) * 100}%` }} />
+                    </div>
+                  </div>
+                  {i === 0 && <span className="text-[10px] text-[#eab308]">★</span>}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-white/5 grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: "Alta", val: porPrioridade.alta ?? 0, cor: "text-red-400" },
+              { label: "Média", val: porPrioridade.media ?? 0, cor: "text-yellow-400" },
+              { label: "Baixa", val: porPrioridade.baixa ?? 0, cor: "text-green-400" },
+            ].map((p) => (
+              <div key={p.label}>
+                <p className={`text-lg font-black ${p.cor}`}>{p.val}</p>
+                <p className="text-[10px] text-white/30">{p.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
 function formatIso(iso: string) {
   try {
     const dt = new Date(iso);
@@ -777,37 +954,7 @@ export function DashboardShell() {
             </section>
           </div>
 
-          <section className="bg-black rounded-xl border border-white/10 p-8 flex flex-col items-center justify-center min-h-[400px]">
-            <div className="flex justify-between items-center w-full mb-12">
-              <h3 className="font-bold text-lg uppercase tracking-widest text-white/50">Widgets</h3>
-              <button className="text-white/40 hover:text-[#eab308]">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="text-center group">
-              <div className="w-24 h-24 mx-auto mb-6 relative">
-                <div className="absolute inset-0 bg-[#ca8a04]/20 rounded-full blur-xl group-hover:bg-[#ca8a04]/30 transition-all" />
-                <div className="relative bg-[#1e1e1e] border border-[#ca8a04]/30 rounded-2xl w-full h-full flex items-center justify-center">
-                  <IconWidget className="w-12 h-12 text-[#eab308] opacity-50" />
-                </div>
-              </div>
-              <h4 className="text-xl font-bold mb-2">Nenhum widget encontrado</h4>
-              <p className="text-white/40 mb-8 max-w-sm mx-auto">
-                Customize seu workspace adicionando componentes de visualização no dashboard.
-              </p>
-              <button className="bg-[#ca8a04] hover:bg-[#eab308] text-black font-black py-3 px-8 rounded shadow-[0_0_20px_rgba(234,179,8,0.3)] transition-all hover:scale-105 uppercase tracking-widest text-xs">
-                Configurar dashboard
-              </button>
-            </div>
-          </section>
+          <WidgetsSection />
         </div>
       </main>
 
