@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import AIReportModal from "@/components/relatorios/AIReportModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Tarefa {
@@ -549,6 +550,7 @@ export default function RelatoriosPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -804,6 +806,17 @@ export default function RelatoriosPage() {
               className="flex items-center justify-center w-8 h-8 bg-[#1e1e1e] border border-white/10 rounded-lg text-white/50 hover:text-white hover:border-white/30 transition-all disabled:opacity-40"
             >
               <IconRefresh c={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              onClick={() => setAiOpen(true)}
+              disabled={loading}
+              title="Gerar análise inteligente com IA"
+              className="group relative flex items-center space-x-2 rounded px-4 py-1.5 text-sm font-bold text-[#eab308] border border-[#eab308]/30 bg-[#eab308]/[0.06] hover:bg-[#eab308]/[0.12] hover:border-[#eab308]/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
+              <span className="hidden sm:inline">Análise IA</span>
             </button>
             <button
               onClick={exportCSV}
@@ -1335,6 +1348,17 @@ export default function RelatoriosPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Análise com IA */}
+      <AIReportModal
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        metrics={{ totalTasks, completionRate, onTime, delayed, collaborators, setorBreakdown, statusBreakdown, chartPoints }}
+        periodLabel={periodLabel(period)}
+        scopeLabel={`${
+          setorFilter === "todos" ? "Todos os setores" : setorFilter === NO_SETOR ? "Sem setor" : setorLabel(setorFilter)
+        } · ${userFilter === "todos" ? "Todos os usuários" : profiles.find((p) => p.id === userFilter)?.nome ?? "Usuário"}`}
+      />
 
       {/* Modal: Gerenciar setores */}
       {manageOpen && (
