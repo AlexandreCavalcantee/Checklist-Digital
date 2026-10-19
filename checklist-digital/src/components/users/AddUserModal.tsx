@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import type { UserDepartment, UserRole } from "@/lib/types";
 
 type Props = {
@@ -58,7 +59,7 @@ export function AddUserModal({ open, onClose, onCreated }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch("/api/users", {
+      const res = await apiFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, corporateEmail, role, department, isAdmin }),

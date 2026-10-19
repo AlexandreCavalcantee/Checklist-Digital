@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { getUploadById } from "@/server/store";
 
 function fromBase64(b64: string) {
@@ -6,9 +7,12 @@ function fromBase64(b64: string) {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const upload = getUploadById(id);
   if (!upload) return NextResponse.json({ error: "Not found" }, { status: 404 });

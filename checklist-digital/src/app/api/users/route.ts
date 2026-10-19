@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { UserDepartment, UserRole } from "@/lib/types";
 
@@ -32,7 +33,10 @@ function isEmail(v: unknown) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .select("*")
@@ -54,6 +58,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const body = (await req.json().catch(() => null)) as
     | { name?: unknown; corporateEmail?: unknown; role?: unknown; department?: unknown; isAdmin?: unknown }
     | null;

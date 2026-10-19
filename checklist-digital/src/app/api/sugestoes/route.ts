@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
 const SETOR_LABELS: Record<string, string> = {
@@ -73,6 +74,9 @@ const SUGESTOES_BASE: Record<string, string[]> = {
 };
 
 export async function GET(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const url = new URL(req.url);
   const setor = url.searchParams.get("setor") ?? "";
 
@@ -127,6 +131,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Body inválido" }, { status: 400 });
 

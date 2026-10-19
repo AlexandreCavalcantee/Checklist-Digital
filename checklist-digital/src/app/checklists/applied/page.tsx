@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 
 type Profile = { id: string; nome: string; email: string | null };
@@ -142,7 +143,7 @@ function AssignModal({
     setSavingSetor(true);
     setErro(null);
     try {
-      const res = await fetch(`/api/checklists/${tarefa.id}/assign`, {
+      const res = await apiFetch(`/api/checklists/${tarefa.id}/assign`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ setor: novo }),
@@ -168,7 +169,7 @@ function AssignModal({
     setSaving(true);
     setErro(null);
     try {
-      const res = await fetch(`/api/checklists/${tarefa.id}/assign`, {
+      const res = await apiFetch(`/api/checklists/${tarefa.id}/assign`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ responsavelId: perfil?.id ?? null }),
@@ -312,8 +313,8 @@ export default function ChecklistsAplicadosPage() {
     setErro(null);
     try {
       const [rTarefas, rProfiles] = await Promise.all([
-        fetch("/api/checklists/assigned", { cache: "no-store" }),
-        fetch("/api/profiles", { cache: "no-store" }),
+        apiFetch("/api/checklists/assigned", { cache: "no-store" }),
+        apiFetch("/api/profiles", { cache: "no-store" }),
       ]);
       if (!rTarefas.ok) throw new Error("Falha ao carregar checklists");
       const jTarefas = (await rTarefas.json()) as { items: Tarefa[] };

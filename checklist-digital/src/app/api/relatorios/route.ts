@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
 type Period = "semana" | "mes" | "trimestre";
@@ -24,6 +25,9 @@ function normalizeSetor(v: unknown): Setor | null {
 }
 
 export async function GET(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const url = new URL(req.url);
   const periodParam = url.searchParams.get("period");
   const period: Period = isPeriod(periodParam) ? periodParam : "semana";

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import AIReportModal from "@/components/relatorios/AIReportModal";
 
@@ -558,8 +559,8 @@ export default function RelatoriosPage() {
 
     try {
       const [relRes, profRes] = await Promise.all([
-        fetch(`/api/relatorios?period=${period}`, { cache: "no-store" }),
-        fetch(`/api/profiles`, { cache: "no-store" }),
+        apiFetch(`/api/relatorios?period=${period}`, { cache: "no-store" }),
+        apiFetch(`/api/profiles`, { cache: "no-store" }),
       ]);
 
       if (!relRes.ok) {
@@ -696,7 +697,7 @@ export default function RelatoriosPage() {
   async function updateSetor(profileId: string, value: string) {
     const setor = value === NO_SETOR ? null : value;
     try {
-      const res = await fetch("/api/profiles", {
+      const res = await apiFetch("/api/profiles", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: profileId, setor }),

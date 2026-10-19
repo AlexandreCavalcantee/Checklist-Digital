@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
 const SETOR_VALUES = ["financas", "operacoes", "qualidade", "rh", "ti", "outros"];
@@ -10,6 +11,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const body = (await req.json().catch(() => null)) as
     | { responsavelId?: string | null; setor?: string | null }

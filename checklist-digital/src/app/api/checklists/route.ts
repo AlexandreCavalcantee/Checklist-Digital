@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { createChecklistFromTemplate } from "@/server/store";
 
 const TENANT_ID = "b1117fe3-97c1-4b8c-98e2-9834ca21f115";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   try {
     const { data, error } = await supabaseAdmin
       .from("tarefas")
@@ -32,6 +36,9 @@ function normalizeSetor(v: unknown): string | null {
 }
 
 export async function POST(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const body = (await req.json().catch(() => null)) as
     | { title?: string; description?: string }
     | null;

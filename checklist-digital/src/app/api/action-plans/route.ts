@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const { data: tarefas, error } = await supabaseAdmin
     .from("tarefas")
     .select("*")

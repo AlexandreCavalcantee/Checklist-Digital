@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
 const SETOR_VALUES = ["financas", "operacoes", "qualidade", "rh", "ti", "outros"] as const;
@@ -8,7 +9,10 @@ function normalizeSetor(v: unknown): Setor | null {
   return typeof v === "string" && (SETOR_VALUES as readonly string[]).includes(v) ? (v as Setor) : null;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .select("*")
@@ -31,6 +35,9 @@ export async function GET() {
 
 // Atualiza o setor/departamento de um perfil existente (gerenciamento por setor).
 export async function PATCH(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const body = (await req.json().catch(() => null)) as { id?: unknown; setor?: unknown } | null;
 
   const id = typeof body?.id === "string" ? body.id : "";

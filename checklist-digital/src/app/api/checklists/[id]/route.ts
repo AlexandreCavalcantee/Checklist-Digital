@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getChecklistById } from "@/server/store";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
 
   // Tenta memória primeiro (sessão atual)

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { createUpload, getStore } from "@/server/store";
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB
@@ -7,7 +8,10 @@ function toBase64(buf: ArrayBuffer) {
   return Buffer.from(buf).toString("base64");
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const { uploads } = getStore();
   return NextResponse.json({
     items: uploads.map((u) => ({
@@ -21,6 +25,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const unauthorized = await requireUser(req);
+  if (unauthorized) return unauthorized;
+
   const form = await req.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: "Form inválido" }, { status: 400 });
 

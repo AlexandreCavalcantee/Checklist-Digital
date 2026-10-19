@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { AddUserModal } from "@/components/users/AddUserModal";
 import Link from "next/link";
 
@@ -215,7 +216,7 @@ function WidgetsSection() {
   const [tarefas, setTarefas] = useState<WidgetTarefa[]>([]);
 
   useEffect(() => {
-    fetch("/api/relatorios?period=trimestre")
+    apiFetch("/api/relatorios?period=trimestre")
       .then((r) => r.json())
       .then((j: { tarefas?: WidgetTarefa[] }) => setTarefas(j.tarefas ?? []))
       .catch(() => {});
@@ -435,7 +436,7 @@ function ChecklistIAModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!setor) return;
     setLoadingSug(true);
     try {
-      const res = await fetch(`/api/sugestoes?setor=${setor}`);
+      const res = await apiFetch(`/api/sugestoes?setor=${setor}`);
       const json = (await res.json()) as SugestoesResponse;
       setSug(json);
       setSelecionados(new Set());
@@ -459,7 +460,7 @@ function ChecklistIAModal({ onClose, onCreated }: { onClose: () => void; onCreat
     setSaving(true);
     setErroSave(null);
     try {
-      const res = await fetch("/api/sugestoes", {
+      const res = await apiFetch("/api/sugestoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -701,7 +702,7 @@ export function DashboardShell() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      const res = await apiFetch("/api/dashboard", { cache: "no-store" });
       if (!res.ok) throw new Error("Falha ao carregar o dashboard");
       const json = (await res.json()) as DashboardResponse;
       setData(json);

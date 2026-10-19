@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 
 type Urgencia = "atrasado" | "critico" | "urgente" | "atencao" | "normal";
@@ -96,7 +97,7 @@ export default function PlanosDeAcaoPage() {
     setLoading(true);
     setErro(null);
     try {
-      const res = await fetch("/api/action-plans", { cache: "no-store" });
+      const res = await apiFetch("/api/action-plans", { cache: "no-store" });
       if (!res.ok) throw new Error("Falha ao carregar planos de ação");
       const j = (await res.json()) as { items: Item[] };
       setItems(j.items);

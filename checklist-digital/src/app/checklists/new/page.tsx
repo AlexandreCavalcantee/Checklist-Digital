@@ -1,7 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 import { useEffect, useMemo, useRef, useState } from "react";
+
+async function downloadUpload(id: string, name: string) {
+  const res = await apiFetch(`/api/uploads/${id}`);
+  if (!res.ok) return;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -517,7 +530,7 @@ function AssigneePopover(props: {
 
   useEffect(() => {
     if (!open) return;
-    fetch("/api/profiles")
+    apiFetch("/api/profiles")
       .then((r) => r.json())
       .then((j: { items: UserOption[] }) => setUsers(j.items || []))
       .catch(() => {});
@@ -750,7 +763,7 @@ export default function NewChecklistPage() {
     setSaving(true);
     setSavedId(null);
     try {
-      const res = await fetch("/api/checklists", {
+      const res = await apiFetch("/api/checklists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -784,7 +797,7 @@ export default function NewChecklistPage() {
     try {
       const fd = new FormData();
       fd.append("file", f);
-      const res = await fetch("/api/uploads", { method: "POST", body: fd });
+      const res = await apiFetch("/api/uploads", { method: "POST", body: fd });
       const json = (await res.json().catch(() => null)) as
         | { upload?: { id: string; name: string; size: number } }
         | { error?: string }
@@ -1113,6 +1126,11 @@ export default function NewChecklistPage() {
                         <a
                           key={u.id}
                           href={`/api/uploads/${u.id}`}
+                          onClick={(e) => {
+                            // Link simples não envia o token; baixa via apiFetch.
+                            e.preventDefault();
+                            downloadUpload(u.id, u.name);
+                          }}
                           className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/30 hover:bg-black/50 px-4 py-3 transition-colors"
                         >
                           <span className="text-sm font-semibold text-white/80 truncate">{u.name}</span>
